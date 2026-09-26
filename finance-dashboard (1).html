@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ledger — Personal Finance Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+:root{
+  --bg:#0F1B2D; --surface:#16243A; --surface2:#1C2E48; --line:#2A3B57;
+  --text:#E8E6E0; --sub:#9FB0C7; --income:#3FBF93; --expense:#C1584C; --gold:#C9A227;
+  --radius:2px;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"]){
+    --bg:#F6F4EF; --surface:#FFFFFF; --surface2:#EFEBE2; --line:#DDD6C8;
+    --text:#1B2436; --sub:#5B6B85; --income:#1E8F63; --expense:#A8402F; --gold:#8A6B14;
+  }
+}
+:root[data-theme="dark"]{}
+html{scroll-padding-top:env(safe-area-inset-top,0px);}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100%;}
+.wrap{max-width:1080px;margin:0 auto;padding:32px 20px 64px;}
+header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:28px;flex-wrap:wrap;}
+h1{font-family:'Fraunces',serif;font-weight:600;font-size:28px;margin:0;letter-spacing:-0.01em;}
+.tag{color:var(--sub);font-size:13px;margin-top:4px;}
+.theme-btn{background:none;border:1px solid var(--line);color:var(--sub);padding:6px 12px;border-radius:var(--radius);font-size:12px;cursor:pointer;font-family:'IBM Plex Mono',monospace;}
+.hero{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);margin-bottom:28px;}
+.hero>div{background:var(--surface);padding:20px;}
+.hero .label{color:var(--sub);font-size:12px;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;}
+.hero .num{font-family:'IBM Plex Mono',monospace;font-size:30px;font-weight:600;}
+.hero .sub{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--sub);margin-top:6px;}
+.pos{color:var(--income);} .neg{color:var(--expense);}
+.grid{display:grid;grid-template-columns:1.1fr 1fr;gap:20px;margin-bottom:20px;}
+@media (max-width:760px){.grid{grid-template-columns:1fr;} .hero{grid-template-columns:1fr;}}
+.panel{background:var(--surface);border:1px solid var(--line);padding:20px;}
+.panel h2{font-family:'Fraunces',serif;font-weight:600;font-size:16px;margin:0 0 16px;padding-bottom:10px;border-bottom:1px solid var(--line);}
+.budget-row{display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:12px;margin-bottom:4px;color:var(--sub);}
+.budget-track{height:6px;background:var(--surface2);margin-bottom:14px;position:relative;overflow:hidden;}
+.budget-fill{height:100%;background:var(--income);}
+.budget-fill.over{background:var(--expense);}
+form{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px;}
+form .full{grid-column:1/-1;}
+label{font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:0.05em;display:block;margin-bottom:4px;}
+input,select{width:100%;background:var(--surface2);border:1px solid var(--line);color:var(--text);padding:9px 10px;font-family:'Inter',sans-serif;font-size:14px;border-radius:var(--radius);}
+input:focus,select:focus,button:focus{outline:2px solid var(--gold);outline-offset:1px;}
+button.add{grid-column:1/-1;background:var(--gold);color:#1B1503;border:none;padding:10px;font-weight:600;cursor:pointer;border-radius:var(--radius);font-size:14px;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th{text-align:left;color:var(--sub);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:0.04em;padding:6px 4px;border-bottom:1px solid var(--line);}
+td{padding:9px 4px;border-bottom:1px solid var(--line);font-family:'IBM Plex Mono',monospace;}
+td.amt{text-align:right;}
+.del{background:none;border:none;color:var(--sub);cursor:pointer;font-size:14px;}
+.del:hover{color:var(--expense);}
+.empty{color:var(--sub);font-size:13px;padding:20px 0;text-align:center;}
+.scrollbox{max-height:320px;overflow-y:auto;}
+canvas{max-height:260px;}
+footer{color:var(--sub);font-size:12px;margin-top:24px;text-align:center;}
+.lock-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px;z-index:100;}
+.lock-box{max-width:340px;width:100%;background:var(--surface);border:1px solid var(--line);padding:28px;}
+.lock-box h1{font-family:'Fraunces',serif;font-weight:600;}
+.lock-box label{margin-top:2px;}
+#resetLink{display:block;width:100%;text-align:left;padding:0;}
+</style>
+</head>
+<body>
+<div id="lockScreen" class="lock-screen">
+  <div class="lock-box">
+    <h1 style="font-size:22px;margin-bottom:6px;">Ledger</h1>
+    <div id="lockSubtitle" class="tag" style="margin-bottom:18px;">Set up your login</div>
+    <form id="lockForm">
+      <label for="pw1" id="pw1Label">Email</label>
+      <input id="pw1" type="email" autocomplete="email" required placeholder="you@example.com">
+      <div style="margin-top:10px;">
+        <label for="pw2" id="pw2Label">Phone number</label>
+        <input id="pw2" type="tel" autocomplete="tel" required placeholder="10-digit mobile number">
+      </div>
+      <button type="submit" class="add" style="margin-top:14px;">Continue</button>
+      <div id="lockError" style="color:var(--expense);font-size:12px;margin-top:10px;display:none;">Incorrect email or phone number.</div>
+    </form>
+    <button id="resetLink" style="background:none;border:none;color:var(--sub);font-size:12px;margin-top:16px;cursor:pointer;text-decoration:underline;">Forgot login? Reset (erases saved data)</button>
+    <div class="tag" style="margin-top:18px;line-height:1.5;">This only locks the file locally in this browser. It is not encryption or verified identity — treat it as a privacy screen, not real security.</div>
+  </div>
+</div>
+<div class="wrap" id="mainApp" style="display:none;">
+  <header>
+    <div>
+      <h1>Ledger</h1>
+      <div class="tag">Personal finance, kept in one place</div>
+    </div>
+    <button class="theme-btn" id="themeToggle">Toggle theme</button>
+  </header>
+
+  <div class="hero">
+    <div>
+      <div class="label">Net this month</div>
+      <div class="num" id="netNum">$0.00</div>
+      <div class="sub" id="netSub">— / —</div>
+    </div>
+    <div>
+      <div class="label">Income</div>
+      <div class="num pos" id="incNum">$0.00</div>
+    </div>
+    <div>
+      <div class="label">Expenses</div>
+      <div class="num neg" id="expNum">$0.00</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>Spending by category</h2>
+      <canvas id="catChart"></canvas>
+    </div>
+    <div class="panel">
+      <h2>Budgets</h2>
+      <div id="budgetList"></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>Add transaction</h2>
+      <form id="txForm">
+        <div><label for="txDesc">Description</label><input id="txDesc" required></div>
+        <div><label for="txAmt">Amount</label><input id="txAmt" type="number" step="0.01" min="0" required></div>
+        <div><label for="txType">Type</label>
+          <select id="txType"><option value="expense">Expense</option><option value="income">Income</option></select>
+        </div>
+        <div><label for="txCat">Category</label>
+          <select id="txCat">
+            <option>Housing</option><option>Food</option><option>Transport</option>
+            <option>Utilities</option><option>Entertainment</option><option>Health</option>
+            <option>Savings</option><option>Other</option>
+          </select>
+        </div>
+        <div class="full"><label for="txWhen">Date &amp; time</label><input id="txWhen" type="datetime-local"></div>
+        <button type="submit" class="add">Add transaction</button>
+      </form>
+      <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line)">
+        <label for="csvFile">Import from UPI / bank CSV export</label>
+        <input id="csvFile" type="file" accept=".csv">
+        <div class="tag" style="margin-top:6px">Expects columns for date, a description/narration, and amount (debit/credit or signed).</div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Recent transactions</h2>
+      <div class="scrollbox">
+        <table>
+          <thead><tr><th>Date</th><th>Description</th><th>Category</th><th style="text-align:right">Amount</th><th></th></tr></thead>
+          <tbody id="txBody"></tbody>
+        </table>
+        <div class="empty" id="txEmpty" style="display:none">No transactions yet — add your first one.</div>
+      </div>
+    </div>
+  </div>
+
+  <footer>Data is stored only in this browser. Nothing is sent anywhere.</footer>
+</div>
+
+<script>
+async function hashPw(pw){
+  try{
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }catch(e){
+    // fallback non-cryptographic hash if SubtleCrypto isn't available
+    let h = 0;
+    for(let i=0;i<pw.length;i++){ h = ((h<<5)-h+pw.charCodeAt(i))|0; }
+    return 'f'+h;
+  }
+}
+
+(function initLock(){
+  const stored = (()=>{ try{ return localStorage.getItem('ledger_pwhash'); }catch(e){ return null; } })();
+  const isSetup = !stored;
+  document.getElementById('lockSubtitle').textContent = isSetup ? 'Set up your login' : 'Log in to continue';
+  document.getElementById('pw1Label').textContent = 'Email';
+  document.getElementById('pw2Label').textContent = 'Phone number';
+
+  document.getElementById('lockForm').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const email = document.getElementById('pw1').value.trim().toLowerCase();
+    const phone = document.getElementById('pw2').value.trim().replace(/\D/g,'');
+    const errEl = document.getElementById('lockError');
+    errEl.style.display = 'none';
+    if(phone.length < 7){ errEl.textContent='Enter a valid phone number.'; errEl.style.display='block'; return; }
+    const h = await hashPw(email + '|' + phone);
+    if(isSetup){
+      try{ localStorage.setItem('ledger_pwhash', h); }catch(e){}
+      unlock();
+    } else {
+      if(h === stored){ unlock(); }
+      else { errEl.textContent='Email or phone number does not match.'; errEl.style.display='block'; }
+    }
+  });
+
+  document.getElementById('resetLink').addEventListener('click', ()=>{
+    if(confirm('This will erase your saved login and all transaction data on this device. Continue?')){
+      try{ localStorage.removeItem('ledger_pwhash'); localStorage.removeItem('ledger_tx'); }catch(e){}
+      location.reload();
+    }
+  });
+
+  function unlock(){
+    document.getElementById('lockScreen').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'block';
+  }
+})();
+</script>
+<script>
+const CATS = ["Housing","Food","Transport","Utilities","Entertainment","Health","Savings","Other"];
+const BUDGETS = {Housing:15000,Food:8000,Transport:4000,Utilities:3000,Entertainment:2500,Health:2000,Savings:10000,Other:3000};
+let tx = [];
+try{ const saved = localStorage.getItem('ledger_tx'); if(saved) tx = JSON.parse(saved); }catch(e){ tx = []; }
+
+function save(){ try{ localStorage.setItem('ledger_tx', JSON.stringify(tx)); }catch(e){} }
+function fmt(n){ return (n<0?'-':'') + '₹' + Math.abs(n).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+let chart;
+function render(){
+  const now = new Date();
+  const monthTx = tx; // demo dataset: treat all entries as current period
+  const income = monthTx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+  const expense = monthTx.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  const net = income - expense;
+
+  document.getElementById('netNum').textContent = fmt(net);
+  document.getElementById('netNum').className = 'num ' + (net>=0?'pos':'neg');
+  document.getElementById('netSub').textContent = now.toLocaleString('default',{month:'long',year:'numeric'});
+  document.getElementById('incNum').textContent = fmt(income);
+  document.getElementById('expNum').textContent = fmt(expense);
+
+  // category totals (expenses only)
+  const catTotals = {};
+  CATS.forEach(c=>catTotals[c]=0);
+  monthTx.filter(t=>t.type==='expense').forEach(t=>{ catTotals[t.category] = (catTotals[t.category]||0) + t.amount; });
+
+  // budgets panel
+  const bl = document.getElementById('budgetList');
+  bl.innerHTML = '';
+  CATS.forEach(c=>{
+    const spent = catTotals[c]||0;
+    const budget = BUDGETS[c];
+    const pct = Math.min(100, (spent/budget)*100);
+    const over = spent > budget;
+    const row = document.createElement('div');
+    row.innerHTML = `<div class="budget-row"><span>${c}</span><span>${fmt(spent)} / ${fmt(budget)}</span></div>
+      <div class="budget-track"><div class="budget-fill ${over?'over':''}" style="width:${pct}%"></div></div>`;
+    bl.appendChild(row);
+  });
+
+  // chart
+  const labels = CATS.filter(c=>catTotals[c]>0);
+  const data = labels.map(c=>catTotals[c]);
+  const ctx = document.getElementById('catChart').getContext('2d');
+  if(chart) chart.destroy();
+  const styles = getComputedStyle(document.documentElement);
+  if(labels.length===0){
+    ctx.clearRect(0,0,999,999);
+  } else {
+    chart = new Chart(ctx, {
+      type:'doughnut',
+      data:{ labels, datasets:[{ data,
+        backgroundColor:['#3FBF93','#C9A227','#4C7FC1','#C1584C','#8B6FC9','#4FA7B8','#C97F4C','#6B7A94'],
+        borderColor: styles.getPropertyValue('--surface'), borderWidth:2 }] },
+      options:{ plugins:{ legend:{ labels:{ color: styles.getPropertyValue('--text'), font:{family:'Inter'} } } } }
+    });
+  }
+
+  // table
+  const body = document.getElementById('txBody');
+  body.innerHTML = '';
+  document.getElementById('txEmpty').style.display = tx.length ? 'none' : 'block';
+  const sorted = tx.map((t,i)=>({...t,_i:i})).sort((a,b)=> new Date(b.when||0) - new Date(a.when||0));
+  sorted.forEach((t)=>{
+    const when = t.when ? new Date(t.when) : null;
+    const whenStr = when && !isNaN(when) ? when.toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '—';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${whenStr}</td><td>${t.desc}</td><td>${t.category}</td>
+      <td class="amt ${t.type==='income'?'pos':'neg'}">${t.type==='income'?'+':'-'}${fmt(t.amount)}</td>
+      <td><button class="del" data-i="${t._i}" aria-label="Delete">✕</button></td>`;
+    body.appendChild(tr);
+  });
+  body.querySelectorAll('.del').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ tx.splice(parseInt(btn.dataset.i),1); save(); render(); });
+  });
+}
+
+function nowLocal(){
+  const d = new Date(); d.setSeconds(0,0);
+  const tz = d.getTimezoneOffset();
+  return new Date(d - tz*60000).toISOString().slice(0,16);
+}
+document.getElementById('txWhen').value = nowLocal();
+
+document.getElementById('txForm').addEventListener('submit', (e)=>{
+  e.preventDefault();
+  const desc = document.getElementById('txDesc').value.trim();
+  const amount = parseFloat(document.getElementById('txAmt').value);
+  const type = document.getElementById('txType').value;
+  const category = document.getElementById('txCat').value;
+  const when = document.getElementById('txWhen').value || nowLocal();
+  if(!desc || !(amount>0)) return;
+  tx.push({desc, amount, type, category, when});
+  save();
+  e.target.reset();
+  document.getElementById('txWhen').value = nowLocal();
+  render();
+});
+
+document.getElementById('csvFile').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  Papa.parse(file, {
+    header:true, skipEmptyLines:true,
+    complete: (res)=>{
+      let added = 0;
+      res.data.forEach(row=>{
+        const keys = Object.keys(row).reduce((m,k)=>{ m[k.trim().toLowerCase()]=row[k]; return m; },{});
+        const dateRaw = keys['date'] || keys['transaction date'] || keys['value date'] || keys['datetime'] || '';
+        const desc = (keys['description'] || keys['narration'] || keys['particulars'] || keys['remarks'] || 'Imported transaction').toString().trim();
+        let amount = 0, type = 'expense';
+        if(keys['debit'] !== undefined || keys['credit'] !== undefined){
+          const debit = parseFloat((keys['debit']||'').toString().replace(/[^0-9.-]/g,''))||0;
+          const credit = parseFloat((keys['credit']||'').toString().replace(/[^0-9.-]/g,''))||0;
+          if(credit>0){ amount = credit; type='income'; } else { amount = debit; type='expense'; }
+        } else {
+          const raw = parseFloat((keys['amount']||'0').toString().replace(/[^0-9.-]/g,''))||0;
+          amount = Math.abs(raw); type = raw < 0 ? 'expense' : 'income';
+        }
+        if(!amount) return;
+        const parsedDate = dateRaw ? new Date(dateRaw) : new Date();
+        const when = isNaN(parsedDate) ? nowLocal() : new Date(parsedDate - parsedDate.getTimezoneOffset()*60000).toISOString().slice(0,16);
+        tx.push({desc, amount, type, category:'Other', when});
+        added++;
+      });
+      save(); render();
+      e.target.value = '';
+      if(added===0) alert('No transactions could be read from that file. Check it has date/description/amount columns.');
+    }
+  });
+});
+
+document.getElementById('themeToggle').addEventListener('click', ()=>{
+  const cur = document.documentElement.getAttribute('data-theme');
+  document.documentElement.setAttribute('data-theme', cur==='dark' ? 'light' : 'dark');
+});
+
+render();
+</script>
+</body>
+</html>
